@@ -1,0 +1,6 @@
+faster-whisper==1.2.1
+sounddevice
+numpy
+pynput
+pystray
+pillow
