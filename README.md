@@ -48,11 +48,63 @@ powershell -ExecutionPolicy Bypass -File setup-cuda.ps1   # cuBLAS + cuDNN from 
 The first start downloads the Whisper model (about 1.6 GB). Then use the tray
 icon's menu to turn on **Start at login**.
 
-Windows opens Search on Win+Q. Free it for this app (then restart Explorer or
-sign out and back in):
+## GPU transcription
+
+Transcription runs on the NVIDIA GPU through faster-whisper, which needs two
+NVIDIA libraries on top of the normal graphics driver: **cuBLAS** (CUDA 12)
+and **cuDNN 9**. The full CUDA Toolkit is not needed.
+
+**Get them from NVIDIA, not PyPI.** They are also published on PyPI as
+`nvidia-cublas-cu12` and `nvidia-cudnn-cu12`, but those wheels are about
+1.3 GB together and PyPI and its mirrors served them at 0.1–0.6 MB/s when
+this was set up: over an hour. NVIDIA's own redistributable CDN served the
+same libraries at several MB/s, about three minutes. `setup-cuda.ps1` does
+this:
+
+1. downloads the cuBLAS and cuDNN zips from
+   `developer.download.nvidia.com/compute/.../redist/` into `cuda-download\`,
+2. checks each against the SHA-256 that NVIDIA publishes for it,
+3. unpacks them into `cuda\`.
+
+`dictate.py` adds every `cuda\*\bin` folder to the DLL search path at startup,
+so nothing is installed system-wide. To move to newer versions, change the
+paths and hashes in `setup-cuda.ps1`; NVIDIA lists them in
+`redistrib_<version>.json` next to the zips.
+
+**The speech model** (`large-v3-turbo`, about 1.6 GB) is downloaded from
+Hugging Face by faster-whisper on the first start and cached in
+`%USERPROFILE%\.cache\huggingface`. It stays loaded in GPU memory while the
+app runs, about 1.6 GB of VRAM. Expect about a second to transcribe 30–80
+seconds of speech on a laptop RTX 2000.
+
+To check the GPU is usable before starting the app:
+
+```powershell
+.venv\Scripts\python -c "import dictate, ctranslate2; print(ctranslate2.get_cuda_device_count())"
+```
+
+It should print `1` (or more).
+
+## Freeing Win+Q from Windows Search
+
+Windows binds Win+Q to Search. Until that binding is removed, Win+Q opens
+Search instead of (or as well as) dictating. Explorer reads a per-user list of
+Win+letter shortcuts to leave alone, `DisabledHotkeys`; add Q to it:
 
 ```powershell
 Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' DisabledHotkeys Q
+Stop-Process -Name explorer -Force   # Explorer restarts itself and rereads it
+```
+
+If `DisabledHotkeys` already lists other letters, append Q instead of
+replacing them. Search is still one keypress away: press Win and start
+typing.
+
+To give Win+Q back to Search, remove the value and restart Explorer:
+
+```powershell
+Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' DisabledHotkeys
+Stop-Process -Name explorer -Force
 ```
 
 ## Files
@@ -60,8 +112,8 @@ Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advan
 - `dictate.py`: the app.
 - `prompt.txt`: the cleanup rules given to Haiku. Edits apply to the next
   dictation; open it from the tray menu.
-- `setup-cuda.ps1`: fetches the CUDA libraries into `cuda\`. NVIDIA's CDN is
-  much faster than PyPI for these.
+- `setup-cuda.ps1`: fetches the CUDA libraries into `cuda\` (see GPU
+  transcription).
 - `dictate.log`: what happened on each dictation, with timings.
 
 ## Limits
