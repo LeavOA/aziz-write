@@ -1,5 +1,5 @@
 # Downloads cuBLAS and cuDNN from NVIDIA's redistributable CDN, checks them
-# against NVIDIA's published SHA-256, and unpacks them into cuda\. dictate.py
+# against NVIDIA's published SHA-256, and unpacks them into cuda\. aziz_write.py
 # loads the DLLs from cuda\*\bin.
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot

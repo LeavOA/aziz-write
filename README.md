@@ -1,4 +1,6 @@
-# dictate
+# Aziz!Write!
+
+> "Aziz! Light!" — *The Fifth Element*
 
 Push-to-talk dictation for Windows, built for talking to Claude Code in WezTerm.
 
@@ -42,7 +44,7 @@ installed on Windows and logged in (`claude` → `/login`).
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 powershell -ExecutionPolicy Bypass -File setup-cuda.ps1   # cuBLAS + cuDNN from NVIDIA
-.venv\Scripts\pythonw.exe dictate.py
+.venv\Scripts\pythonw.exe aziz_write.py
 ```
 
 The first start downloads the Whisper model (about 1.6 GB). Then use the tray
@@ -66,7 +68,7 @@ this:
 2. checks each against the SHA-256 that NVIDIA publishes for it,
 3. unpacks them into `cuda\`.
 
-`dictate.py` adds every `cuda\*\bin` folder to the DLL search path at startup,
+`aziz_write.py` adds every `cuda\*\bin` folder to the DLL search path at startup,
 so nothing is installed system-wide. To move to newer versions, change the
 paths and hashes in `setup-cuda.ps1`; NVIDIA lists them in
 `redistrib_<version>.json` next to the zips.
@@ -80,7 +82,7 @@ seconds of speech on a laptop RTX 2000.
 To check the GPU is usable before starting the app:
 
 ```powershell
-.venv\Scripts\python -c "import dictate, ctranslate2; print(ctranslate2.get_cuda_device_count())"
+.venv\Scripts\python -c "import aziz_write, ctranslate2; print(ctranslate2.get_cuda_device_count())"
 ```
 
 It should print `1` (or more).
@@ -109,12 +111,12 @@ Stop-Process -Name explorer -Force
 
 ## Files
 
-- `dictate.py`: the app.
+- `aziz_write.py`: the app.
 - `prompt.txt`: the cleanup rules given to Haiku. Edits apply to the next
   dictation; open it from the tray menu.
 - `setup-cuda.ps1`: fetches the CUDA libraries into `cuda\` (see GPU
   transcription).
-- `dictate.log`: what happened on each dictation, with timings.
+- `aziz-write.log`: what happened on each dictation, with timings.
 
 ## Limits
 
@@ -122,4 +124,4 @@ Stop-Process -Name explorer -Force
   but inserts nothing yet.
 - Don't type in the target pane while a dictation is processing: the marker is
   removed with backspaces.
-- English only (`LANGUAGE` in `dictate.py`).
+- English only (`LANGUAGE` in `aziz_write.py`).

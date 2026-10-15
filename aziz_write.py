@@ -1,4 +1,4 @@
-"""Push-to-talk dictation: hold Win+Q, speak, release. Lives in the tray.
+"""Aziz!Write!: push-to-talk dictation. Hold Win+Q, speak, release. Lives in the tray.
 
 The recording is transcribed on the GPU with faster-whisper, cleaned up by
 Claude Haiku through Claude Code (prompt.txt), and typed into the WezTerm pane
@@ -19,7 +19,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-LOG_PATH = HERE / "dictate.log"
+LOG_PATH = HERE / "aziz-write.log"
 WEZTERM = r"C:\Program Files\WezTerm\wezterm.exe"
 WEZTERM_PROCESS = "wezterm-gui.exe"
 MODEL = "large-v3-turbo"
@@ -33,10 +33,10 @@ CLEANUP_TIMEOUT_S = 30
 NO_WINDOW = subprocess.CREATE_NO_WINDOW
 PYTHONW = HERE / ".venv" / "Scripts" / "pythonw.exe"
 STARTUP_LINK = (Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu"
-                / "Programs" / "Startup" / "Dictate.lnk")
-SINGLE_INSTANCE_MUTEX = "Local\\dictate-push-to-talk"
+                / "Programs" / "Startup" / "Aziz!Write!.lnk")
+SINGLE_INSTANCE_MUTEX = "Local\\aziz-write"
 
-log = logging.getLogger("dictate")
+log = logging.getLogger("aziz-write")
 
 
 def add_cuda_dll_dirs() -> None:
@@ -162,7 +162,7 @@ class Cleanup:
     """
 
     def __init__(self):
-        self.workdir = tempfile.mkdtemp(prefix="dictate-claude-")
+        self.workdir = tempfile.mkdtemp(prefix="aziz-write-claude-")
         self.lock = threading.Lock()
         self.prompt = None
         self.proc = None
@@ -357,11 +357,11 @@ class PushToTalk:
 # --- tray ------------------------------------------------------------------------
 
 TRAY_STATES = {
-    "loading": ((140, 140, 140), "Dictate: loading the speech model…"),
-    "idle": ((52, 120, 246), "Dictate: hold Win+Q to dictate"),
-    "recording": ((229, 57, 53), "Dictate: recording…"),
-    "processing": ((245, 166, 35), "Dictate: transcribing and cleaning up…"),
-    "error": ((120, 0, 0), "Dictate: failed to start; see the log"),
+    "loading": ((140, 140, 140), "Aziz!Write!: loading the speech model…"),
+    "idle": ((52, 120, 246), "Aziz!Write!: hold Win+Q to dictate"),
+    "recording": ((229, 57, 53), "Aziz!Write!: recording…"),
+    "processing": ((245, 166, 35), "Aziz! Write!…"),
+    "error": ((120, 0, 0), "Aziz!Write!: failed to start; see the log"),
 }
 
 
@@ -392,12 +392,12 @@ def set_start_at_login(enabled: bool) -> None:
         STARTUP_LINK.unlink(missing_ok=True)
         return
     script = (
-        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:DICTATE_LINK);"
-        "$s.TargetPath = $env:DICTATE_PYTHONW; $s.Arguments = '\"' + $env:DICTATE_SCRIPT + '\"';"
-        "$s.WorkingDirectory = $env:DICTATE_DIR; $s.Description = 'Push-to-talk dictation'; $s.Save()"
+        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:AZIZ_LINK);"
+        "$s.TargetPath = $env:AZIZ_PYTHONW; $s.Arguments = '\"' + $env:AZIZ_SCRIPT + '\"';"
+        "$s.WorkingDirectory = $env:AZIZ_DIR; $s.Description = 'Aziz!Write! push-to-talk dictation'; $s.Save()"
     )
-    env = dict(os.environ, DICTATE_LINK=str(STARTUP_LINK), DICTATE_PYTHONW=str(PYTHONW),
-               DICTATE_SCRIPT=str(HERE / "dictate.py"), DICTATE_DIR=str(HERE))
+    env = dict(os.environ, AZIZ_LINK=str(STARTUP_LINK), AZIZ_PYTHONW=str(PYTHONW),
+               AZIZ_SCRIPT=str(HERE / "aziz_write.py"), AZIZ_DIR=str(HERE))
     subprocess.run(["powershell", "-NoProfile", "-Command", script],
                    env=env, check=True, creationflags=NO_WINDOW)
 
@@ -406,7 +406,7 @@ class Tray:
     def __init__(self, on_quit):
         title = TRAY_STATES["loading"][1]
         self.icons = {state: mic_icon(rgb) for state, (rgb, _) in TRAY_STATES.items()}
-        self.icon = pystray.Icon("dictate", self.icons["loading"], title, menu=pystray.Menu(
+        self.icon = pystray.Icon("aziz-write", self.icons["loading"], title, menu=pystray.Menu(
             pystray.MenuItem("Start at login", self._toggle_login, checked=lambda _: starts_at_login()),
             pystray.MenuItem("Edit prompt", lambda: os.startfile(PROMPT_PATH)),
             pystray.MenuItem("Open log", lambda: os.startfile(LOG_PATH)),
