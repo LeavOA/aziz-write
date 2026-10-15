@@ -441,6 +441,18 @@ class Tray:
         self.on_quit()
 
 
+def load_whisper() -> WhisperModel:
+    """Loads the model from the local cache, downloading it only if missing.
+
+    At login the network may not be up yet; the cached copy needs none.
+    """
+    try:
+        return WhisperModel(MODEL, device="cuda", compute_type="float16", local_files_only=True)
+    except Exception:
+        log.info("model %s not cached; downloading", MODEL)
+        return WhisperModel(MODEL, device="cuda", compute_type="float16")
+
+
 def already_running() -> bool:
     kernel32 = ctypes.windll.kernel32
     kernel32.CreateMutexW(None, False, SINGLE_INSTANCE_MUTEX)  # held until exit
@@ -471,7 +483,7 @@ def main() -> None:
         icon.visible = True
         try:
             t = time.monotonic()
-            model = BatchedInferencePipeline(WhisperModel(MODEL, device="cuda", compute_type="float16"))
+            model = BatchedInferencePipeline(load_whisper())
             cleanup = Cleanup()
             PushToTalk(Dictation(model, cleanup, tray.set_state)).start()
             log.info("model %s loaded in %.1fs; hold Win+Q to dictate", MODEL, time.monotonic() - t)
