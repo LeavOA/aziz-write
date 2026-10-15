@@ -116,7 +116,11 @@ Stop-Process -Name explorer -Force
   dictation; open it from the tray menu.
 - `setup-cuda.ps1`: fetches the CUDA libraries into `cuda\` (see GPU
   transcription).
-- `aziz-write.log`: what happened on each dictation, with timings.
+- `aziz-write.log`: timings and lengths for each dictation. It does not
+  record what you said. To debug the cleanup prompt you can set the
+  environment variable `AZIZ_WRITE_LOG_TEXT=1` before starting the app, which
+  adds the raw and cleaned text of every dictation to this plain-text file.
+  Turn it off and delete the log when done.
 
 ## Limits
 

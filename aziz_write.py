@@ -35,8 +35,16 @@ PYTHONW = HERE / ".venv" / "Scripts" / "pythonw.exe"
 STARTUP_LINK = (Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu"
                 / "Programs" / "Startup" / "Aziz!Write!.lnk")
 SINGLE_INSTANCE_MUTEX = "Local\\aziz-write"
+# What you dictate stays out of the log unless this is set, for debugging the
+# cleanup prompt: the log is a plain file that would otherwise keep everything.
+LOG_TEXT = os.environ.get("AZIZ_WRITE_LOG_TEXT") == "1"
 
 log = logging.getLogger("aziz-write")
+
+
+def described(text: str) -> str:
+    """Text for the log: its length, plus the text itself only when LOG_TEXT."""
+    return f"{len(text)} chars: {text!r}" if LOG_TEXT else f"{len(text)} chars"
 
 
 def add_cuda_dll_dirs() -> None:
@@ -278,13 +286,13 @@ class Dictation:
             t = time.monotonic()
             segments, _ = self.model.transcribe(audio, language=LANGUAGE, beam_size=1, batch_size=8)
             text = " ".join(s.text.strip() for s in segments).strip()
-            log.info("transcribed %.1fs of audio in %.2fs: %r", seconds, time.monotonic() - t, text)
+            log.info("transcribed %.1fs of audio in %.2fs, %s", seconds, time.monotonic() - t, described(text))
             if text:
                 status.show("✨ cleaning up…")
                 t = time.monotonic()
                 try:
                     text = self.cleanup.clean(text)
-                    log.info("cleaned up in %.2fs: %r", time.monotonic() - t, text)
+                    log.info("cleaned up in %.2fs, %s", time.monotonic() - t, described(text))
                 except Exception:
                     log.exception("cleanup failed; inserting the raw transcript")
             if text and status.pane_id is None:
