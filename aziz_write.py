@@ -22,6 +22,10 @@ HERE = Path(__file__).resolve().parent
 LOG_PATH = HERE / "aziz-write.log"
 WEZTERM = r"C:\Program Files\WezTerm\wezterm.exe"
 WEZTERM_PROCESS = "wezterm-gui.exe"
+# Where the GUI keeps its gui-sock-<pid> sockets. Without WEZTERM_UNIX_SOCKET
+# (set only in WezTerm's own shells, not at login), `wezterm cli` finds the
+# socket here but connects to it by bare name, so it must run from this folder.
+WEZTERM_RUNTIME_DIR = Path.home() / ".local" / "share" / "wezterm"
 MODEL = "large-v3-turbo"
 LANGUAGE = "en"
 SAMPLE_RATE = 16000
@@ -98,7 +102,7 @@ def focused_wezterm_pane() -> int | None:
 def wezterm_cli(*args: str, input: str | None = None) -> str:
     return subprocess.run(
         [WEZTERM, "cli", *args], input=input, capture_output=True, text=True,
-        encoding="utf-8", check=True, creationflags=NO_WINDOW,
+        encoding="utf-8", check=True, creationflags=NO_WINDOW, cwd=WEZTERM_RUNTIME_DIR,
     ).stdout
 
 
@@ -341,7 +345,7 @@ class PushToTalk:
             self.win_down = down
             if not down and self.active:
                 self.active = False
-                self.worker.submit(self.dictation.stop)
+                self._run(self.dictation.stop)
             return True
         if data.vkCode != VK_Q:
             return True
@@ -349,13 +353,22 @@ class PushToTalk:
             if not self.active:  # Q's key repeat arrives as more downs
                 self.active = True
                 tap_mask_key()
-                self.worker.submit(self.dictation.start)
+                self._run(self.dictation.start)
             self.listener.suppress_event()
         elif not down and self.active:
             self.active = False
-            self.worker.submit(self.dictation.stop)
+            self._run(self.dictation.stop)
             self.listener.suppress_event()
         return True
+
+    def _run(self, action) -> None:
+        """Queues action on the worker; the executor would swallow its errors."""
+        def logged():
+            try:
+                action()
+            except Exception:
+                log.exception("%s failed", action.__name__)
+        self.worker.submit(logged)
 
     def start(self) -> None:
         self.listener = keyboard.Listener(win32_event_filter=self.event_filter)
