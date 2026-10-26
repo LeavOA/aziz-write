@@ -4,3 +4,4 @@ numpy
 pynput
 pystray
 pillow
+pyyaml

@@ -3,3 +3,6 @@ __pycache__/
 *.log
 cuda/
 cuda-download/
+build/
+dist/
+prompts.yaml

@@ -1,0 +1,74 @@
+# Compiles the app into a Windows exe with PyInstaller (aziz-write.spec), checks
+# that the exe starts, and keeps the zip as a workflow artifact. A tag v<VERSION>
+# (VERSION as in aziz_write.py) also attaches the zip to a GitHub release. The
+# exe fetches the CUDA libraries and the speech model on request at first
+# start; nothing of that is bundled.
+name: Compile for Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # to attach the zip to the release of a tag
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Read the version from the code
+        id: version
+        run: |
+          $version = (Select-String -Path aziz_write.py -Pattern '^VERSION = "([^"]+)"').Matches[0].Groups[1].Value
+          "version=$version" >> $env:GITHUB_OUTPUT
+          if ("${{ github.ref }}" -like "refs/tags/*" -and "${{ github.ref_name }}" -ne "v$version") {
+            throw "tag ${{ github.ref_name }} does not match VERSION $version in aziz_write.py"
+          }
+
+      - name: Install the app's packages and PyInstaller
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Compile
+        run: pyinstaller --noconfirm aziz-write.spec
+
+      - name: Add the README and license next to the exe
+        run: Copy-Item README.md, LICENSE dist\aziz-write\
+
+      - name: Check that the exe starts
+        # No GPU and no model here, so it stops at the setup window; getting
+        # there shows every package made it into the bundle.
+        run: |
+          $p = Start-Process dist\aziz-write\aziz-write.exe -PassThru
+          Start-Sleep 30
+          Stop-Process $p -Force -ErrorAction SilentlyContinue
+          $log = Get-Content dist\aziz-write\aziz-write.log -Raw -ErrorAction SilentlyContinue
+          Write-Host $log
+          if ($log -notmatch 'setup needed|loaded in|startup failed') {
+            throw "the exe did not get as far as the setup window"
+          }
+          Remove-Item dist\aziz-write\aziz-write.log -Force -ErrorAction SilentlyContinue
+
+      - name: Zip
+        run: Compress-Archive -Path dist\aziz-write\* -DestinationPath aziz-write-${{ steps.version.outputs.version }}-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aziz-write-${{ steps.version.outputs.version }}-windows
+          path: aziz-write-*-windows.zip
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: aziz-write-*-windows.zip
+          generate_release_notes: true
