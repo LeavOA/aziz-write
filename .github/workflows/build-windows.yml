@@ -19,9 +19,9 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -60,7 +60,7 @@ jobs:
 
       # An artifact download is a zip of what was uploaded, so upload the
       # folder, not a zip of it. The release gets a zip file of its own.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: aziz-write-${{ steps.version.outputs.version }}-windows
           path: dist/aziz-write
@@ -71,7 +71,7 @@ jobs:
 
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: aziz-write-*-windows.zip
           generate_release_notes: true
