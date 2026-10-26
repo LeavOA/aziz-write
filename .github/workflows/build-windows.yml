@@ -46,8 +46,11 @@ jobs:
 
       - name: Check that the exe starts
         # No GPU and no model here, so it stops at the setup window; getting
-        # there shows every package made it into the bundle.
+        # there shows every package made it into the bundle. The settings file
+        # marks the first launch done, or its questions come first and block.
         run: |
+          New-Item -ItemType Directory -Force "$env:APPDATA\Aziz!Write!" | Out-Null
+          Set-Content "$env:APPDATA\Aziz!Write!\settings.json" '{"asked_start_at_login": true}'
           $p = Start-Process dist\aziz-write\aziz-write.exe -PassThru
           Start-Sleep 30
           Stop-Process $p -Force -ErrorAction SilentlyContinue
