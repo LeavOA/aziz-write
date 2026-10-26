@@ -45,10 +45,15 @@ Needs Windows with an NVIDIA GPU, WezTerm, and Claude Code installed on
 Windows and logged in (`claude` → `/login`).
 
 **The compiled app:** download `aziz-write-<version>-windows.zip` from the
-[releases](https://github.com/LeavOA/aziz-write/releases), unzip it into a
-folder of your own (it writes its log and the CUDA libraries next to the
-exe), and run `aziz-write.exe`. Windows SmartScreen warns about unsigned
-programs: **More info**, then **Run anyway**.
+[releases](https://github.com/LeavOA/aziz-write/releases), unzip it
+anywhere, and run `aziz-write.exe`. Windows SmartScreen warns about unsigned
+programs: **More info**, then **Run anyway**. The first run offers to
+install: it copies itself to `%LOCALAPPDATA%\Programs\Aziz!Write!`, adds a
+Start Menu entry, and restarts from there, after which the unzipped folder
+can be deleted. That folder is per user, so no administrator is needed, and
+the app keeps its prompts, log and CUDA libraries next to the exe there.
+Saying no keeps it running from wherever it is; **Install into Programs…**
+in the tray menu offers again.
 
 **From source** (needs Python 3.10+):
 
@@ -132,7 +137,8 @@ restart Explorer again.
 **Start at login** in the tray icon's menu puts a shortcut in the Startup
 folder (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Aziz!Write!.lnk`)
 that runs the exe, or, from source, `aziz_write.py` with the venv's
-`pythonw.exe`. The same from a shell, from source:
+`pythonw.exe`. Installing into Programs re-points it. The same from a
+shell, from source:
 
 ```powershell
 .venv\Scripts\python -c "import aziz_write; aziz_write.set_start_at_login(True)"
@@ -278,13 +284,16 @@ filled in. The log has timings and lengths only, not what you said, unless
 ## Disabling and removing
 
 **Disable and clean up…** in the tray icon's menu turns off start at login,
-offers to turn back on each Windows shortcut the app turned off, removes the
-settings file, asks whether to delete the downloaded CUDA libraries and the
-speech model, and quits. Then delete the app's folder.
+removes the Start Menu entry, offers to turn back on each Windows shortcut
+the app turned off, removes the settings file, asks whether to delete the
+downloaded CUDA libraries and the speech model, and quits. An installed copy
+then deletes its own folder; otherwise delete the app's folder yourself.
 
 By hand: quit from the tray menu, delete
-`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Aziz!Write!.lnk`,
-`%APPDATA%\Aziz!Write!`, the app's folder, and, if you want the model gone,
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Aziz!Write!.lnk` and
+`Startup\Aziz!Write!.lnk` next to it, `%APPDATA%\Aziz!Write!`, the app's
+folder (`%LOCALAPPDATA%\Programs\Aziz!Write!` when installed), and, if you
+want the model gone,
 `%USERPROFILE%\.cache\huggingface\hub\models--mobiuslabsgmbh--faster-whisper-large-v3-turbo`.
 Give Win+Q back to Search as described under The shortcut.
 

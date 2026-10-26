@@ -52,8 +52,12 @@ CLEANUP_MODEL = "haiku"
 CLEANUP_TIMEOUT_S = 30
 NO_WINDOW = subprocess.CREATE_NO_WINDOW
 PYTHONW = HERE / ".venv" / "Scripts" / "pythonw.exe"
-STARTUP_LINK = (Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu"
-                / "Programs" / "Startup" / "Aziz!Write!.lnk")
+START_MENU = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+STARTUP_LINK = START_MENU / "Startup" / "Aziz!Write!.lnk"
+START_MENU_LINK = START_MENU / "Aziz!Write!.lnk"
+# Where the exe installs itself: per user, no administrator needed, and the
+# app can write next to itself there (prompts, log, CUDA libraries, updates).
+INSTALL_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Programs" / "Aziz!Write!"
 # Per-user settings: the shortcut, the agent and terminal, where the CUDA
 # libraries and the model were pointed to, whether start-at-login was offered,
 # and the system shortcuts turned off to make room for ours (see Conflict).
@@ -1599,20 +1603,84 @@ def set_start_at_login(enabled: bool) -> None:
     if not enabled:
         STARTUP_LINK.unlink(missing_ok=True)
         return
-    target, args = startup_command()
+    make_shortcut(STARTUP_LINK, *startup_command())
+
+
+def installed() -> bool:
+    """Whether this is the exe in INSTALL_DIR (from source: never)."""
+    return FROZEN and HERE.resolve() == INSTALL_DIR.resolve()
+
+
+def make_shortcut(link: Path, target: str, args: str = "") -> None:
     powershell(
         "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:AZIZ_LINK);"
         "$s.TargetPath = $env:AZIZ_TARGET; $s.Arguments = $env:AZIZ_ARGS;"
         "$s.WorkingDirectory = $env:AZIZ_DIR; $s.Description = 'Aziz!Write! push-to-talk dictation'; $s.Save()",
-        link=str(STARTUP_LINK), target=target, args=args, dir=str(HERE),
+        link=str(link), target=target, args=args, dir=str(Path(target).parent),
     )
 
 
-def first_launch(hotkey: Hotkey) -> None:
-    """On the first launch: offers to start at login, and to free the shortcut
-    if Windows or something else has it."""
+def after_exit(script: str, **env: str) -> None:
+    """Runs a PowerShell snippet once this process has exited, with AZIZ_* env values.
+
+    Children outlive their parent on Windows; a hidden console is enough.
+    (DETACHED_PROCESS, which gives none, stops PowerShell from running at all.)
+    """
+    subprocess.Popen(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+         f"Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; {script}"],
+        env={**os.environ, **{f"AZIZ_{k.upper()}": v for k, v in env.items()}},
+        creationflags=NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
+    )
+
+
+def install_to_programs(on_quit) -> None:
+    """Copies the app's folder to INSTALL_DIR, adds a Start Menu entry, points
+    an existing start-at-login shortcut there, and restarts from there."""
+    log.info("installing into %s", INSTALL_DIR)
+    INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+    for item in HERE.iterdir():
+        if item.name in ("aziz-write.log", "cuda-download"):
+            continue
+        target = INSTALL_DIR / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(item, target)
+    exe = str(INSTALL_DIR / Path(sys.executable).name)
+    make_shortcut(START_MENU_LINK, exe)
+    if starts_at_login():
+        make_shortcut(STARTUP_LINK, exe)
+    after_exit("Start-Process -FilePath $env:AZIZ_EXE -WorkingDirectory $env:AZIZ_DIR", exe=exe, dir=str(INSTALL_DIR))
+    log.info("installed; restarting from %s", INSTALL_DIR)
+    on_quit()
+
+
+def offer_install(on_quit) -> bool:
+    """When the exe runs from somewhere else (an unzipped folder, Downloads),
+    offers to install. True when it is installing and about to restart."""
+    if not FROZEN or installed():
+        return False
+    if not ask(f"Install Aziz!Write! into {INSTALL_DIR} and add it to the Start Menu?\n\n"
+               "It then runs from there, and this folder can be deleted. "
+               "No keeps running from here (the tray menu can install later)."):
+        return False
+    try:
+        install_to_programs(on_quit)
+    except Exception as e:
+        log.exception("installing failed")
+        tell(f"Could not install: {e}")
+        return False
+    return True
+
+
+def first_launch(hotkey: Hotkey, on_quit) -> None:
+    """On the first launch: offers to install, to start at login, and to free
+    the shortcut if Windows or something else has it."""
     if load_settings().get("asked_start_at_login"):
         return
+    if offer_install(on_quit):
+        return  # the installed copy asks the rest
     update_settings(asked_start_at_login=True)
     try:
         if not starts_at_login() and ask(
@@ -1698,10 +1766,10 @@ def install_release(zip_url: str, on_progress, on_quit) -> None:
     download(zip_url, zip_path, lambda f: on_progress(f"downloading the update: {f:.0%}"))
     script = workdir / "update.ps1"
     script.write_text(UPDATE_SCRIPT, encoding="utf-8")
-    subprocess.Popen(
+    subprocess.Popen(  # the script itself waits for this process to exit (see after_exit on the flags)
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
          "-AppPid", str(os.getpid()), "-Zip", str(zip_path), "-Here", str(HERE), "-Exe", sys.executable],
-        creationflags=NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+        creationflags=NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
     )
     log.info("update downloaded; quitting for %s to install it", script)
     on_quit()
@@ -1735,13 +1803,9 @@ def install_source_update(on_progress, on_quit) -> None:
                             capture_output=True, text=True, encoding="utf-8", creationflags=NO_WINDOW)
     if result.returncode:
         raise RuntimeError(f"pip install failed: {result.stderr.strip()[-500:]}")
-    subprocess.Popen(
-        ["powershell", "-NoProfile", "-Command",
-         f"Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; "
-         f"Start-Process -FilePath $env:AZIZ_PYTHONW -ArgumentList ('\"' + $env:AZIZ_SCRIPT + '\"') -WorkingDirectory $env:AZIZ_DIR"],
-        env={**os.environ, "AZIZ_PYTHONW": str(PYTHONW), "AZIZ_SCRIPT": str(HERE / "aziz_write.py"), "AZIZ_DIR": str(HERE)},
-        creationflags=NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
-    )
+    after_exit("Start-Process -FilePath $env:AZIZ_PYTHONW -ArgumentList ('\"' + $env:AZIZ_SCRIPT + '\"') "
+               "-WorkingDirectory $env:AZIZ_DIR",
+               pythonw=str(PYTHONW), script=str(HERE / "aziz_write.py"), dir=str(HERE))
     log.info("updated; restarting")
     on_quit()
 
@@ -1782,13 +1846,15 @@ def downloaded_model_dir() -> Path | None:
 def disable_and_clean_up(on_quit) -> None:
     """Undoes what the app set up on this account, then quits. The app's own
     folder is left for the user to delete."""
+    folder = (f"The installed app, {HERE}, is removed too." if installed()
+              else f"The app's folder, {HERE}, stays; delete it yourself afterwards.")
     if not ask("Disable Aziz!Write! and clean up?\n\nThis turns off start at login, offers to turn "
                "back on any Windows shortcuts it turned off, removes its settings, and quits. "
-               "It then asks whether to delete the downloaded CUDA libraries and speech model.\n\n"
-               f"The app's folder, {HERE}, stays; delete it yourself afterwards."):
+               f"It then asks whether to delete the downloaded CUDA libraries and speech model.\n\n{folder}"):
         return
     try:
         set_start_at_login(False)
+        START_MENU_LINK.unlink(missing_ok=True)
         offer_restore()
         cuda_dirs = [d for d in (CUDA_DIR, CUDA_DOWNLOAD_DIR) if d.exists()]
         if cuda_dirs and ask("Delete the CUDA libraries the app downloaded (about 2.5 GB)?\n\n"
@@ -1811,7 +1877,11 @@ def disable_and_clean_up(on_quit) -> None:
         log.exception("clean-up failed")
         tell(f"Clean-up did not finish: {e}. See the log.")
         return
-    tell(f"Aziz!Write! is disabled and will quit now. To remove it, delete {HERE}.")
+    if installed():
+        after_exit("Remove-Item -LiteralPath $env:AZIZ_DIR -Recurse -Force", dir=str(INSTALL_DIR))
+        tell("Aziz!Write! is disabled and will remove itself now.")
+    else:
+        tell(f"Aziz!Write! is disabled and will quit now. To remove it, delete {HERE}.")
     on_quit()
 
 
@@ -1834,6 +1904,7 @@ class Tray:
             pystray.MenuItem(lambda _: f"Agent: {AGENTS[chosen_agent()[0]][0]}", agents, enabled=ready),
             pystray.MenuItem(lambda _: f"Prompt: {current_prompt_name()}…", self._prompts),
             pystray.MenuItem("Start at login", self._toggle_login, checked=lambda _: starts_at_login()),
+            pystray.MenuItem("Install into Programs…", self._install, visible=lambda _: FROZEN and not installed()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open log", lambda: os.startfile(LOG_PATH)),
             pystray.MenuItem("Report a problem…", lambda: report_problem(hotkey_text())),
@@ -1847,6 +1918,9 @@ class Tray:
 
     def _clean_up(self) -> None:
         threading.Thread(target=disable_and_clean_up, args=(self._quit,), daemon=True).start()
+
+    def _install(self) -> None:
+        threading.Thread(target=offer_install, args=(self._quit,), daemon=True).start()
 
     def _prompts(self) -> None:
         if self.prompts_open.locked():
@@ -1960,7 +2034,7 @@ def main() -> None:
     def load_and_listen(icon) -> None:
         nonlocal dictation, ptt
         icon.visible = True
-        threading.Thread(target=first_launch, args=(hotkey,), daemon=True).start()
+        threading.Thread(target=first_launch, args=(hotkey, quit_app), daemon=True).start()
         try:
             cuda, model_files = CudaNeed(), ModelNeed()
             missing = [need for need in (cuda, model_files) if need.locate() is None]
