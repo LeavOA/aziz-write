@@ -1674,13 +1674,14 @@ def offer_install(on_quit) -> bool:
     return True
 
 
-def first_launch(hotkey: Hotkey, on_quit) -> None:
+def first_launch(hotkey: Hotkey, on_quit) -> bool:
     """On the first launch: offers to install, to start at login, and to free
-    the shortcut if Windows or something else has it."""
+    the shortcut if Windows or something else has it. One question at a time;
+    True when the app is restarting from the installed copy, which asks the rest."""
     if load_settings().get("asked_start_at_login"):
-        return
+        return False
     if offer_install(on_quit):
-        return  # the installed copy asks the rest
+        return True
     update_settings(asked_start_at_login=True)
     try:
         if not starts_at_login() and ask(
@@ -1693,6 +1694,7 @@ def first_launch(hotkey: Hotkey, on_quit) -> None:
             free_for(conflict, hotkey, None)
     except Exception:
         log.exception("first-launch setup failed")
+    return False
 
 
 def report_problem(hotkey_text: str) -> None:
@@ -2034,8 +2036,9 @@ def main() -> None:
     def load_and_listen(icon) -> None:
         nonlocal dictation, ptt
         icon.visible = True
-        threading.Thread(target=first_launch, args=(hotkey, quit_app), daemon=True).start()
         try:
+            if first_launch(hotkey, quit_app):
+                return  # restarting from the installed copy
             cuda, model_files = CudaNeed(), ModelNeed()
             missing = [need for need in (cuda, model_files) if need.locate() is None]
             if missing:
